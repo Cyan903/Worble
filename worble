@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+
+# Wordle clone - in bash!
+# https://gist.github.com/scholtes/94f3c0303ba6a7768b47583aff36654d
+
+declare guess
+declare guesses
+declare state
+declare word
+declare bank
+
+# Fallback word bank
+bank=(
+    GLADE TABBY ONSET BRIAR INFER ROUND MUSHY CANON SULKY PLIER TRUCE SYNOD
+    OPINE FUDGE ROCKY LOOSE MAUVE WOOZY VERVE FILET THEFT ENDOW PUTTY CREAK
+    RUGBY PHONY SNEER SCENE SWISH UNITY PLUSH SCAMP ERASE EQUIP TRAIT CLOVE
+    NEWER GROAN CHIDE OFFER GRAVY DITCH SHEEP SWOOP BRACE THING BRUTE FUROR
+    NOSEY RIGOR CARAT MURAL CRIME CLOTH QUOTA MINOR PLANK ADAPT FUGUE FLOUT 
+    CYCLE GLARE RIVET NUDGE SCORN VIGOR CHOIR GORGE LARGE EVENT PEACE CRAVE
+    HOBBY SPOOL PATIO VIRUS SHARD ALLOT UNTIE ELEGY SHOWN ASKEW DOING YACHT
+    CLANK BONUS NOMAD BLURB OPIUM STEEL THANK CRIED FACET ALIEN FILER ZONAL
+    PESKY LEECH CLEFT COMFY GREED CADDY AUDIO DRINK BEVEL START DUTCH IGLOO
+    BOULE MADLY GAUGE NEWLY RASPY VOWEL STAKE BLOOD ADULT SWATH BLISS ANGRY
+    STUDY CIVIC ANGST FJORD HYDRO CRASH BILLY TRACT DECOY SNORT AMITY USUAL
+    MANIA FLARE MAGIC SILKY LINEN AISLE CONDO IDYLL STORY SHARP VAUNT STEAL
+    RUSTY INEPT HOWDY APNEA PRANK GIPSY CRATE METAL HAZEL EARTH STAIN BICEP
+)
+
+# Read the input & update the UI
+read_input() {
+    local len="${#guess}"
+
+    read -r -n1 input; clear
+
+    [[ "$input" =~ ^[A-Z]$ || "$input" =~ ^[a-z]$ && "$len" -lt 5 ]] && guess+="${input^}"
+    [[ "$input" = $'\x7f' && "$len" -gt 0 ]] && guess="${guess::len-1}"
+    [[ "$input" = $'\e' ]] && quit_game
+    [[ -z "$input" && "$len" = 5 ]] && {
+        [[ "$guess" = "$word" ]] && {
+            state=1
+            return
+        }
+
+        [[ "${#guesses[@]}" = 5 ]] && {
+            state=2
+            return
+        }
+
+        guesses+=("$guess")
+        guess=""
+    }
+}
+
+# Print the grid
+print_guess() {
+    local g="$1"
+
+    for (( i = 0; i < 5; i++ )); do
+        local c="${g:$i:1}"
+
+        echo -ne "$(tput setab 8)$(tput bold)$(tput setaf 0)"
+
+        if "$2"; then
+            if [[ "${word:$i:1}" = "$c" ]]; then
+                echo -ne "$(tput setab 10)"
+            elif [[ "$word" =~ ${g:$i:1} ]]; then
+                echo -ne "$(tput setab 11)"
+            fi
+        else
+            echo -ne "$(tput smul)"
+        fi
+
+        [[ -z "$c" ]] && c=" "
+
+        echo -n " $c "
+        echo -ne "$(tput sgr0)"
+    done
+
+    printf "\n"
+}
+
+# Print the game's state
+print_state() {
+    printf "%sWorble - attempt (%s/6)\n\n" "$(tput bold)" "$(( ${#guesses[@]} + 1 ))"
+
+    for g in "${guesses[@]}"
+        do print_guess "$g" true
+    done
+
+    if [[ $state -eq 0 ]]
+        then print_guess "$guess" false
+        else print_guess "$guess" true
+    fi
+
+    for (( j = 0; j < 5 - "${#guesses[@]}"; j++ ))
+        do print_guess "     " true
+    done
+
+    printf "%s\n(esc) to quit\n(enter) to confirm\n\n%s" "$(tput bold)" "$(tput sgr0)"
+}
+
+# Main game
+worble() {
+    word=${bank[$RANDOM % ${#bank[@]}]}
+    guesses=()
+    guess=""
+    state=0
+
+    # Hide the cursor
+    tput civis
+
+    if [[ -n "$CHEAT" ]]
+        then printf "\n-> %s\n" "$word"
+        else clear; print_state
+    fi
+
+    # Input loop
+    while [[ state -eq 0 ]]; do
+        read_input
+        print_state
+    done
+
+    # Check win
+    if [[ "$state" == 1 ]]
+        then echo "You win! The word was '$word' - Took $(( ${#guesses[@]} + 1 )) attempt(s)."
+        else echo "You lost! The word was '$word'"
+    fi
+
+    # Play again
+    read -p "Would you like to play again? (Y/n) " -n 1 -r again
+
+    [[ "$again" =~ ^[Yy]$ ]] && {
+        worble
+        return
+    }
+
+    quit_game
+}
+
+# Display usage
+usage() {
+    cat <<EOF
+Worble - The wordle game in bash!
+
+Usage: worble [word bank]
+
+Options:
+  help      display help
+  <path>    load the word bank from an external file
+EOF
+
+    exit 1
+}
+
+# Quit the game
+quit_game() {
+    tput cnorm
+    printf "\n"
+
+    exit 0
+}
+
+[[ -n "$1" ]] && {
+    [[ "$1" = "help" ]] && usage
+    mapfile -t bank < "$1"
+}
+
+worble
+
